@@ -21,11 +21,15 @@ This document covers the technical details of how class merging works, and how t
 
 # Design
 
-## Notating merged classes
-Merged classes will have their package prepended with `merged_v` and the version of the dependency they are merged from.
-For example, a class merged from version 1.0.0 of a dependency would have the package `merged_v1_0_0.com.example.ClassName`
-Sanatization of the version must be done to make it a valid package name, all bad characters should be replaced with `_`.
-Classes will also be annotated by the class file visible annotation `@MergedClass` with the version of the dependency.
+## Merged classes
+There will be a merged class generated for the purpose of targetting instead of the versioned classes. 
+This class will be generated in the package `merged` and will be named the same as the original class.
+these classes will also be annotated by the class file visible annotation `@MergedClass` with the version of the dependency.
+there will also be annotations for methods/fields in order to specify which versions they are from.
+
+### Access changes
+classes/members will only be considered for merged if they are public or protected. this means if a method is private on one version,
+it won't appear to exist on the merged class for that version. the access will also be notated in a field on the member annotation.
 
 for example.
 the class `com.example.ClassA`
@@ -56,8 +60,48 @@ the merged class would look like
 ```java
 package merged.com.example;
 
-@MergedClass("1.0")
+@MergedClass(versions = {"1.0", "1.1"})
 public class ClassA {
+    
+    @MergedMethod(versions = {"1.0", "1.1"})
+    public void methodA() {
+        throw new AssertionError();
+    }
+    
+    @MergedMethod(versions = {"1.1"})
+    public void methodB() {
+        throw new AssertionError();
+    }
+}
+```
+
+## Hierarchy changes
+in order to facilitate hierarchy changes, when these are detected, a few extra methods will be added to the merged class
+the class will no longer inherit from the original merged class, and instead will add a method for "casting" to each version's parent that it adds.
+
+this will also use a different annotation to notate the method as "synthetic", meaning it's not actually in the original class.
+
+for example.
+the class `com.example.ClassA`
+with version 1.0 could look like
+```java
+package com.example;
+
+import com.example.ClassB;
+
+public class ClassA extends ClassB {
+    public void methodA() {
+        System.out.println("Hello World!");
+    }
+}
+```
+and version 1.1 could look like
+```java
+package com.example;
+
+import com.example.ClassC;
+
+public class ClassA extends ClassC {
     public void methodA() {
         System.out.println("Hello World!");
     }
@@ -66,3 +110,96 @@ public class ClassA {
     }
 }
 ```
+
+the merged class would look like
+```java
+package merged.com.example;
+
+import merged.com.example.ClassB;
+import merged.com.example.ClassC;
+
+@MergedClass(versions = {"1.0", "1.1"})
+public class ClassA {
+    
+    @MergedMethod(versions = {"1.0", "1.1"})
+    public void methodA() {
+        throw new AssertionError();
+    }
+    
+    @MergedMethod(versions = {"1.1"})
+    public void methodB() {
+        throw new AssertionError();
+    }
+    
+    @SyntheticMergedMethod(versions = {"1.0"})
+    public ClassB castToClassB() {
+        throw new AssertionError();
+    }
+    
+    @SyntheticMergedMethod(versions = {"1.1"})
+    public ClassC castToClassC() {
+        throw new AssertionError();
+    }
+}
+```
+
+## Method/Field name/desc conflicts
+in the case of a method or field having the same name and descriptor, the method/field will be renamed to include the version it is from.
+this will also include the original name in the annotation.
+
+for example.
+the class `com.example.ClassA`
+with version 1.0 could look like
+```java
+package com.example;
+
+public class ClassA {
+    public void methodA() {
+        System.out.println("Hello World!");
+    }
+}
+```
+and version 1.1 could look like
+```java
+package com.example;
+
+public class ClassA {
+    public int methodA() {
+        System.out.println("Hello World!");
+    }
+}
+```
+
+the merged class would look like
+```java
+package merged.com.example;
+
+@MergedClass(versions = {"1.0", "1.1"})
+public class ClassA {
+    
+    @MergedMethod(name = "methodA", versions = {"1.0"})
+    public void methodA_v1_0() {
+        throw new AssertionError();
+    }
+    
+    @MergedMethod(name = "methodA", versions = {"1.1"})
+    public int methodA_v1_1() {
+        throw new AssertionError();
+    }
+}
+```
+
+## determining the current version
+A synthetic class will be inserted in dev to allow for code that needs to know the current version to build for.
+this class will be named `CurrentVersion` and will be in the package `xyz.wagyourtail.jarmerger.injected`.
+this class will have a static method `getCurrentVersion()` that returns a string of the current version.
+this class will be removed in production builds, as this should be handled by the class splitter.
+
+## Splitting versions (optional)
+Split classes will have their package prepended with `v` and the version of the dependency they are merged from.
+For example, a class merged from version 1.0.0 of a dependency would have the package `v1_0_0.com.example.ClassName`
+Sanatization of the version must be done to make it a valid package name, all bad characters should be replaced with `_`.
+
+### Accessing versioned versions
+If split classes are enabled, the merged class will add syntetic methods (much like the hierarchy changes) to allow for accessing the versioned classes.
+these methods will be named `getVersionedClass_vX_Y_Z()` where `X_Y_Z` is the version of the dependency.

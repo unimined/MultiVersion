@@ -1,10 +1,10 @@
 package xyz.wagyourtail.unimined.jarmerger
 
-import xyz.wagyourtail.unimined.jarmerger.glue.GlueStick
+import xyz.wagyourtail.unimined.jarmerger.glue.GlueGun
 import java.nio.file.Path
 import java.util.*
 
-class GlueGun(val workingFolder: Path) {
+class JarMerger(val workingFolder: Path) {
 
     fun merge(
         jars: Set<JarInfoWithDependencies>,
@@ -13,26 +13,22 @@ class GlueGun(val workingFolder: Path) {
         // depth first process
         val processed = mutableMapOf<JarInfo, MergedJarInfo>()
         val byName = jars.groupBy { it.name }.toMutableMap()
-        while (byName.isNotEmpty()) {
-            val next = byName.firstNotNullOf { (name, jars) ->
-                for (jar in jars) {
-                    if (jar is JarInfoWithDependencies && jar.flattenedDependencies.any { !processed.containsKey(it) }) {
-                        return@firstNotNullOf null
-                    }
-                }
-                return@firstNotNullOf name
-            }
-            val nextJars = byName.remove(next)!!.toSet()
-            val merged = merge(nextJars, processed)
+        for ((key, nextJars) in byName) {
+            val merged = MergedJarInfo(
+                key,
+                nextJars.toSet(),
+                processed,
+                workingFolder
+            )
             for (jar in nextJars) {
                 processed[jar] = merged
             }
         }
         // re-structure into same tree as originally, but with MergedJarInfoWithMergedDependencies
-        return retree(jars, processed) as Set<MergedJarInfoWithMergedDependencies>
+        return retree(jars, processed)
     }
 
-    fun flatten(jars: Set<JarInfo>): List<JarInfo> {
+    private fun flatten(jars: Set<JarInfo>): List<JarInfo> {
         return jars.flatMap {
             if (it is JarInfoWithDependencies) {
                 flatten(it.dependencies)
@@ -42,7 +38,7 @@ class GlueGun(val workingFolder: Path) {
         }
     }
 
-    fun uniqify(jars: List<JarInfo>): Set<JarInfo> {
+    private fun uniqify(jars: List<JarInfo>): Set<JarInfo> {
         val uniq = mutableMapOf<JarInfo, JarInfo>()
         for (jar in jars) {
             if (jar in uniq) {
@@ -68,19 +64,16 @@ class GlueGun(val workingFolder: Path) {
         return uniq.values.toSet()
     }
 
-    fun merge(jars: Set<JarInfo>, processed: Map<JarInfo, MergedJarInfo>): MergedJarInfo {
-
-    }
-
-    fun retree(jars: Set<JarInfo>, map: Map<JarInfo, MergedJarInfo>): Set<MergedJarInfo> {
-        val merged = mutableSetOf<MergedJarInfo>()
+    private fun retree(jars: Set<JarInfo>, map: Map<JarInfo, MergedJarInfo>): Set<MergedJarInfoWithMergedDependencies> {
+        val merged = mutableSetOf<MergedJarInfoWithMergedDependencies>()
         for (jar in jars) {
             if (jar is JarInfoWithDependencies) {
                 val mergedJar = map[jar]!!
                 val mergedDependencies = retree(jar.dependencies, map)
-                merged.add(MergedJarInfoWithMergedDependencies(mergedJar.path, mergedJar.name, mergedJar.versions, mergedDependencies))
+                merged.add(MergedJarInfoWithMergedDependencies(mergedJar.path, mergedJar.name, mergedJar.versions.map { it.version }.toSet(), mergedDependencies))
             } else {
-                merged.add(map[jar]!!)
+                val mergedJar = map[jar]!!
+                merged.add(MergedJarInfoWithMergedDependencies(jar.path, jar.name, mergedJar.versions.map { it.version }.toSet(), emptySet()))
             }
         }
         return merged
@@ -111,15 +104,15 @@ class GlueGun(val workingFolder: Path) {
 
     open class MergedJarInfo(
         val name: String,
-        versions: Set<JarInfo>,
+        val versions: Set<JarInfo>,
         mergedMap: Map<JarInfo, MergedJarInfo>,
         workingFolder: Path
     ) {
 
-        val glueStick = GlueStick(name, versions, mergedMap, workingFolder)
+        val glueGun = GlueGun(name, versions, mergedMap, workingFolder)
 
         val path by lazy {
-
+            glueGun.generate()
         }
 
     }
@@ -142,7 +135,7 @@ class GlueGun(val workingFolder: Path) {
 
     }
 
-    class MergedJarInfoWithMergedDependencies(path: Path, name: String, versions: Set<String>, val dependencies: Set<MergedJarInfo>) : MergedJarInfo(path, name, versions) {
+    class MergedJarInfoWithMergedDependencies(val path: Path, val name: String, val versions: Set<String>, val dependencies: Set<MergedJarInfoWithMergedDependencies>) {
 
     }
 

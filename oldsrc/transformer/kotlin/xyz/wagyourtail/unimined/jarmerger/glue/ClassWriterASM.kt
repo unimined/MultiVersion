@@ -5,9 +5,10 @@ import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.tree.ClassNode
 import java.net.URLClassLoader
 
-class ClassWriterASM(val loader: ClassLoader = URLClassLoader(arrayOf()), val buildingNodes: Map<String, ClassNode>): ClassWriter(
+class ClassWriterASM(val loader: ClassLoader = URLClassLoader(arrayOf()), private val buildingNodes: Map<String, ClassNode>): ClassWriter(
     COMPUTE_MAXS or COMPUTE_FRAMES
 ) {
+
     override fun getCommonSuperClass(type1: String, type2: String): String {
         val it1 = buildInheritanceTree(type1)
         val it2 = buildInheritanceTree(type2)
@@ -35,4 +36,5 @@ class ClassWriterASM(val loader: ClassLoader = URLClassLoader(arrayOf()), val bu
         tree.add("java/lang/Object")
         return tree
     }
+
 }
