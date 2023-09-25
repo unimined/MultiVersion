@@ -1,2 +1,2 @@
-rootProject.name = "JarMerger"
+rootProject.name = "MultiVersion"
 
