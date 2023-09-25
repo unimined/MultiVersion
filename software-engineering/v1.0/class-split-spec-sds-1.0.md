@@ -26,22 +26,25 @@ to this end, the user will be able to specify several types of helpers and annot
 ## @Remove(versions = {})
 This annotation will be used to specify that a method/field/class should be removed from the versioned class if the target version is in the list of versions.
 
-## @Stub(versions = {}, ref = @Ref())
+## @Stub(versions = {}, ref = @Ref, field = false)
 This annotation will be used to specify that a method/field/class should be replaced with a stub if the target version is in the list of versions.
 the ref annotation will be used to specify the method/field/class to use as a reference for the stub.
 if this is on a method, the method must be static and have a compatible signature with the method being stubbed.
 
-## @Replace(versions = {}, ref = @Ref())
+if `@Ref` isn't provided, it will be attempted to be auto-determined by the stub based on it's name/desc.
+the first arg will be used as the class. this means it must be provided when stubbing a static method.
+
+## @Replace(versions = {}, ref = @Ref, field = false)
 This annotation is similar to stub, but instead of replacing the method/field/class with a stub, it will allow for a more complicated replacement by passing an asm context and
 running the function in order to produce the replacement at splitting time.
 
-## @Ref()
+## @Ref
 ```java
 public @interface Ref {
 
-    String value(); // internal class name
+    Class<?> value();
 
-    String member() default ""; // method/field name
+    String member() default ""; // method/field name, if not provided these will attempt to be auto-determined by the stub field/method's name/desc
 
     String desc() default ""; // method/field desc
 

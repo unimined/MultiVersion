@@ -138,23 +138,30 @@ class MergeProvider : MergeOptions {
                 if (superName == "java/lang/Object") {
                     continue
                 }
-                val castMethod = output.visitMethod(Opcodes.ACC_PUBLIC, "mv\$castTo_" + superName.sanatize(), "()L$superName;", null, null)
-                castMethod.visitCode()
-                // throw new AssertionError();
-                castMethod.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
-                castMethod.visitInsn(Opcodes.DUP)
-                castMethod.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
-                castMethod.visitInsn(Opcodes.ATHROW)
-                castMethod.visitMaxs(2, 1)
-                castMethod.visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
-                    visitArray("versions").apply {
-                        for (version in sVersions) {
-                            visit(null, version)
-                        }
+                val castMethod = output.visitMethod(
+                    Opcodes.ACC_PUBLIC,
+                    "mv\$castTo\$" + superName.sanatize(),
+                    "()L$superName;",
+                    null,
+                    null
+                ).apply {
+                    visitCode()
+                    // throw new AssertionError();
+                    visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
+                    visitInsn(Opcodes.DUP)
+                    visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
+                    visitInsn(Opcodes.ATHROW)
+                    visitMaxs(2, 1)
+                    visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
+                        visitArray("versions").apply {
+                            for (version in sVersions) {
+                                visit(null, version)
+                            }
+                        }.visitEnd()
+                        visit("synthetic", true)
                     }.visitEnd()
-                    visit("synthetic", true)
-                }.visitEnd()
-                castMethod.visitEnd()
+                    visitEnd()
+                }
             }
         }
         val versionsByInterfaces = versions.mapValues { it.value.interfaces.toSet() as Set<Class> }.inverseMulti()
@@ -268,7 +275,7 @@ class MergeProvider : MergeOptions {
                 continue
             }
             val name = if (conflictingMethods.contains(member)) {
-                member.name + "_v_" + versionsByMethod[member]!!.keys.min().sanatize()
+                member.name + "\$mv\$" + versionsByMethod[member]!!.keys.min().sanatize()
             } else {
                 member.name
             }
@@ -301,12 +308,14 @@ class MergeProvider : MergeOptions {
                 null
             )
             if (memberAccess.first and Opcodes.ACC_ABSTRACT == 0) {
-                method.visitCode()
-                method.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
-                method.visitInsn(Opcodes.DUP)
-                method.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
-                method.visitInsn(Opcodes.ATHROW)
-                method.visitMaxs(2, 1)
+                with(method) {
+                    visitCode()
+                    visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
+                    visitInsn(Opcodes.DUP)
+                    visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
+                    visitInsn(Opcodes.ATHROW)
+                    visitMaxs(2, 1)
+                }
             }
             method.visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
                 if (conflictingMethods.contains(member)) {
@@ -389,7 +398,7 @@ class MergeProvider : MergeOptions {
 
     data class MemberNameAndType(val name: String, val type: Type, val static: Boolean) {
         fun conflicts(other: MemberNameAndType): Boolean {
-            if (name == other.name && static != other.static) {
+            if (name == other.name && type == other.type && static != other.static) {
                 return true
             }
             if (type.sort == Type.METHOD) {

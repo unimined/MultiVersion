@@ -79,7 +79,9 @@ public class ClassA {
 in order to facilitate hierarchy changes, when these are detected, a few extra methods will be added to the merged class
 the class will no longer inherit from the original merged class, and instead will add a method for "casting" to each version's parent that it adds.
 
-this will also use a annotation parameter to notate the method as "synthetic", meaning it's not actually in the original class.
+this will also use an annotation parameter to notate the method as "synthetic", meaning it's not actually in the original class.
+
+hierarchy changes will also be noted in the `@MergedClass` annotation with an `@Inheritance` annotation that denotes changes from what the merged class's inheritance would be.
 
 for example.
 the class `com.example.ClassA`
@@ -112,32 +114,33 @@ public class ClassA extends ClassC {
 ```
 
 the merged class would look like
+
 ```java
 package merged.com.example;
 
 import merged.com.example.ClassB;
 import merged.com.example.ClassC;
 
-@MergedClass(versions = {"1.0", "1.1"})
+@MergedClass(versions = {"1.0", "1.1"}, inheritance = { @Inheritance(version = "1.0", superClass = ClassB.class), @Inheritance(version = "1.1", superClass = ClassC.class)})
 public class ClassA {
-    
+
     @MergedMember(versions = {"1.0", "1.1"})
     public void methodA() {
         throw new AssertionError();
     }
-    
+
     @MergedMember(versions = {"1.1"})
     public void methodB() {
         throw new AssertionError();
     }
-    
+
     @MergedMember(versions = {"1.0"}, synthetic = true)
-    public ClassB castToClassB() {
+    public ClassB mv$castTo$ClassB() {
         throw new AssertionError();
     }
-    
+
     @MergedMember(versions = {"1.1"}, synthetic = true)
-    public ClassC castToClassC() {
+    public ClassC mv$castTo$ClassC() {
         throw new AssertionError();
     }
 }
@@ -178,12 +181,12 @@ package merged.com.example;
 public class ClassA {
     
     @MergedMember(name = "methodA", versions = {"1.0"})
-    public void methodA_v1_0() {
+    public void methodA$mv$1_0() {
         throw new AssertionError();
     }
     
     @MergedMember(name = "methodA", versions = {"1.1"})
-    public int methodA_v1_1() {
+    public int methodA$mv$1_1() {
         throw new AssertionError();
     }
 }
@@ -202,4 +205,4 @@ Sanatization of the version must be done to make it a valid package name, all ba
 
 ### Accessing versioned versions
 If split classes are enabled, the merged class will add syntetic methods (much like the hierarchy changes) to allow for accessing the versioned classes.
-these methods will be named `getVersionedClass_vX_Y_Z()` where `X_Y_Z` is the version of the dependency.
+these methods will be named `mv$getVersionedClass$X_Y_Z()` where `X_Y_Z` is the version of the dependency.

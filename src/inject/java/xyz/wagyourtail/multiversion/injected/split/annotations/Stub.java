@@ -11,6 +11,8 @@ public @interface Stub {
 
     String[] versions();
 
-    Ref ref() default @Ref("");
+    Ref ref() default @Ref(Void.class);
+
+    boolean field() default false;
 
 }

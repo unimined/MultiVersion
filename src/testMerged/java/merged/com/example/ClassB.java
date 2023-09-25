@@ -8,7 +8,7 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember;
 public class ClassB {
 
     @MergedMember(versions = { "b" }, synthetic = true)
-    public ClassA mv$castTo_com_example_ClassA() {
+    public ClassA mv$castTo$com_example_ClassA() {
         throw new AssertionError();
     }
 
@@ -18,7 +18,7 @@ public class ClassB {
     }
 
     @MergedMember(name = "conflict", versions = { "a" })
-    public long conflict_v_a() {
+    public long conflict$mv$a() {
         throw new AssertionError();
     }
 
@@ -28,7 +28,7 @@ public class ClassB {
     }
 
     @MergedMember(name = "conflict", versions = { "b" })
-    public int conflict_v_b() {
+    public int conflict$mv$b() {
         throw new AssertionError();
     }
 
