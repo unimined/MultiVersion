@@ -12,6 +12,9 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintWriter
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardOpenOption
+import kotlin.io.path.createDirectories
+import kotlin.io.path.writeBytes
 import kotlin.test.assertEquals
 
 class MergeProviderTest {
@@ -27,29 +30,6 @@ class MergeProviderTest {
             ): MethodVisitor {
                 val superVisitor = super.visitMethod(access, name, descriptor, signature, exceptions)
                 return object: MethodVisitor(Opcodes.ASM9) {
-                    override fun visitLocalVariable(
-                        name: String?,
-                        descriptor: String?,
-                        signature: String?,
-                        start: Label?,
-                        end: Label?,
-                        index: Int
-                    ) {
-
-                    }
-
-                    override fun visitLabel(label: Label?) {
-
-                    }
-
-                    override fun visitLineNumber(line: Int, start: Label?) {
-
-                    }
-
-                    override fun visitAnnotationDefault(): AnnotationVisitor {
-                        return superVisitor.visitAnnotationDefault()
-                    }
-
                     override fun visitAnnotation(descriptor: String?, visible: Boolean): AnnotationVisitor {
                         return superVisitor.visitAnnotation(descriptor, visible)
                     }
@@ -78,6 +58,14 @@ class MergeProviderTest {
         return baos.toString()
     }
 
+    fun writeClass(visitor: (ClassVisitor) -> Unit, path: Path) {
+        val baos = ByteArrayOutputStream()
+        val cw = ClassWriter(ClassWriter.COMPUTE_MAXS)
+        visitor(cw)
+        path.parent.createDirectories()
+        path.writeBytes(cw.toByteArray())
+    }
+
     fun assertEqual(expected: (ClassVisitor) -> Unit, actual: (ClassVisitor) -> Unit) {
         val expectedStr = classToTextify(simplifiedVisitor(expected))
         val actualStr = classToTextify(simplifiedVisitor(actual))
@@ -104,6 +92,7 @@ class MergeProviderTest {
         val merged = classNodeFromJar(merged, "merged/$name.class")
         val out = MergeProvider().merge(mapOf("a" to a, "b" to b), setOf("com/example/ClassA", "com/example/ClassB", "com/example/ClassC"))
         assertEqual({ merged.accept(it) }, { out.accept(it) })
+        writeClass({ out.accept(it) }, Paths.get("./build/tmp/test/merged/$name.class"))
     }
 
     @Test

@@ -7,7 +7,7 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember;
 @MergedClass(versions = { "a", "b" })
 public class ClassA {
 
-    @MergedMember(versions = { "b" })
+    @MergedMember(versions = { "a" })
     public String fieldA;
 
     @MergedMember(versions = { "a", "b" })
@@ -25,7 +25,7 @@ public class ClassA {
     }
 
     @MergedMember(versions = { "b" })
-    public void methodB() {
+    public String methodB() {
         throw new AssertionError();
     }
 

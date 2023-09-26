@@ -1,18 +1,22 @@
 package xyz.wagyourtail.multiversion.injected.split.annotations;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import java.lang.annotation.*;
 
 @Retention(RetentionPolicy.CLASS)
 @Target({ ElementType.METHOD, ElementType.FIELD, ElementType.TYPE })
+@Repeatable(Stub.StubHolder.class)
 public @interface Stub {
 
     String[] versions();
 
-    Ref ref() default @Ref(Void.class);
+    Ref ref() default @Ref("");
 
     boolean field() default false;
+
+    @Retention(RetentionPolicy.CLASS)
+    @Target({ ElementType.METHOD, ElementType.FIELD, ElementType.TYPE })
+    @interface StubHolder {
+        Stub[] value();
+    }
 
 }

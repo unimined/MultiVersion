@@ -2,6 +2,7 @@ package xyz.wagyourtail.multiversion.merge
 
 import org.jetbrains.annotations.VisibleForTesting
 import org.objectweb.asm.ClassReader
+import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.commons.ClassRemapper
@@ -22,6 +23,16 @@ class MergeProvider : MergeOptions {
 
     fun String.sanatize(): String {
         return replace(Regex("[^a-zA-Z0-9_]"), "_")
+    }
+
+    fun MethodVisitor.assertionErrorCode() {
+        visitCode()
+        // throw new AssertionError();
+        visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
+        visitInsn(Opcodes.DUP)
+        visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
+        visitInsn(Opcodes.ATHROW)
+        visitMaxs(2, 1)
     }
 
     fun merge(versions: Map<Version, Path>, output: Path) {
@@ -145,13 +156,7 @@ class MergeProvider : MergeOptions {
                     null,
                     null
                 ).apply {
-                    visitCode()
-                    // throw new AssertionError();
-                    visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
-                    visitInsn(Opcodes.DUP)
-                    visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
-                    visitInsn(Opcodes.ATHROW)
-                    visitMaxs(2, 1)
+                    assertionErrorCode()
                     visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
                         visitArray("versions").apply {
                             for (version in sVersions) {
@@ -174,7 +179,7 @@ class MergeProvider : MergeOptions {
                 if (iface in interfaces) {
                     continue
                 }
-                val castMethod = output.visitMethod(Opcodes.ACC_PUBLIC, "mv\$castTo_" + iface.sanatize(), "()L$iface;", null, null)
+                val castMethod = output.visitMethod(Opcodes.ACC_PUBLIC, "mv\$castTo\$" + iface.sanatize(), "()L$iface;", null, null)
                 castMethod.visitCode()
                 // throw new AssertionError();
                 castMethod.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
@@ -287,35 +292,15 @@ class MergeProvider : MergeOptions {
                 null
             }
 
-//            val paramTypes = member.type.argumentTypes.toMutableList()
-//            for (i in 0..paramTypes.lastIndex) {
-//                if (mergingClasses.contains(paramTypes[i].internalName)) {
-//                    paramTypes[i] = Type.getType("Lmerged/" + paramTypes[i].internalName + ";")
-//                }
-//            }
-//            val returnType = if (mergingClasses.contains(member.type.returnType.internalName)) {
-//                Type.getType("Lmerged/" + member.type.returnType.internalName + ";")
-//            } else {
-//                member.type.returnType
-//            }
-
             val method = output.visitMethod(
                 memberAccess.first,
                 name,
                 member.type.descriptor,
-//                Type.getMethodType(returnType, *paramTypes.toTypedArray()).descriptor,
                 memberSig,
                 null
             )
             if (memberAccess.first and Opcodes.ACC_ABSTRACT == 0) {
-                with(method) {
-                    visitCode()
-                    visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
-                    visitInsn(Opcodes.DUP)
-                    visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
-                    visitInsn(Opcodes.ATHROW)
-                    visitMaxs(2, 1)
-                }
+                method.assertionErrorCode()
             }
             method.visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
                 if (conflictingMethods.contains(member)) {

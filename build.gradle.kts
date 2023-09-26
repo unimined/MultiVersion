@@ -37,8 +37,8 @@ val merge by sourceSets.registering {
 }
 
 val split by sourceSets.registering {
-    compileClasspath += api.get().output + main.get().compileClasspath
-    runtimeClasspath += api.get().output + main.get().runtimeClasspath
+    compileClasspath += api.get().output + inject.get().output + main.get().compileClasspath
+    runtimeClasspath += api.get().output + inject.get().output + main.get().runtimeClasspath
 }
 
 main {
@@ -66,8 +66,18 @@ val testMerged by sourceSets.registering {
 }
 
 val testSplit by sourceSets.registering {
-    compileClasspath += inject.get().output
-    runtimeClasspath += inject.get().output
+    compileClasspath += inject.get().output + testMerged.get().output
+    runtimeClasspath += inject.get().output + testMerged.get().output
+}
+
+val testSplittedA by sourceSets.registering {
+    compileClasspath += inject.get().output + testMergeA.get().output
+    runtimeClasspath += inject.get().output + testMergeA.get().output
+}
+
+val testSplittedB by sourceSets.registering {
+    compileClasspath += inject.get().output + testMergeB.get().output
+    runtimeClasspath += inject.get().output + testMergeB.get().output
 }
 
 val asmVersion = project.properties["asm_version"] as String
@@ -133,11 +143,15 @@ val testMergeBJar by tasks.registering(Jar::class) {
 val testMergedJar by tasks.registering(Jar::class) {
     from(testMerged.get().output)
     archiveFileName.set("test-merged.jar")
+}
 
+val testSplitJar by tasks.registering(Jar::class) {
+    from(testSplit.get().output)
+    archiveFileName.set("test-split.jar")
 }
 
 tasks.test {
-    dependsOn(testMergeAJar, testMergeBJar, testMergedJar)
+    dependsOn(testMergeAJar, testMergeBJar, testMergedJar, testSplitJar)
     useJUnitPlatform()
 }
 

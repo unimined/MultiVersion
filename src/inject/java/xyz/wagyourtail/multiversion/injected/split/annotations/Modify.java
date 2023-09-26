@@ -3,19 +3,19 @@ package xyz.wagyourtail.multiversion.injected.split.annotations;
 import java.lang.annotation.*;
 
 @Retention(RetentionPolicy.CLASS)
-@Target({ ElementType.METHOD, ElementType.FIELD, ElementType.TYPE })
-@Repeatable(Modify.ReplaceHolder.class)
+@Target({ ElementType.METHOD })
+@Repeatable(Modify.ModifyHolder.class)
 public @interface Modify {
 
     String[] versions();
 
-    Ref ref() default @Ref(Void.class);
+    Ref ref() default @Ref("");
 
     boolean field() default false;
 
     @Retention(RetentionPolicy.CLASS)
-    @Target({ ElementType.METHOD, ElementType.FIELD, ElementType.TYPE })
-    @interface ReplaceHolder {
+    @Target({ ElementType.METHOD })
+    @interface ModifyHolder {
         Modify[] value();
     }
 

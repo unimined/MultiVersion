@@ -1,16 +1,7 @@
-package xyz.wagyourtail.multiversion.gradle
+package xyz.wagyourtail.multiversion.util
 
-import org.objectweb.asm.AnnotationVisitor
-import org.objectweb.asm.ClassWriter
-import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 import org.objectweb.asm.tree.AnnotationNode
-import org.objectweb.asm.tree.ClassNode
-import xyz.wagyourtail.multiversion.gradle.AnnotationClassGenerator.step
-import xyz.wagyourtail.multiversion.util.checkedCast
-import java.lang.invoke.MethodHandle
-import java.lang.invoke.MethodHandles
-import java.lang.invoke.MethodHandles.Lookup
 import java.lang.reflect.Proxy
 
 object AnnotationClassGenerator {
