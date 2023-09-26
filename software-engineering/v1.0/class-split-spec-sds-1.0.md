@@ -35,6 +35,9 @@ if `@Ref` isn't provided, it will be attempted to be auto-determined by the stub
 the first arg will be used as the class. this means it must be provided when stubbing a static method.
 
 ## @Replace(versions = {}, ref = @Ref, field = false)
+if the version matches, calls to this method will get replaced with a call to the ref's method.
+
+## @Modify(versions = {}, ref = @Ref, field = false)
 This annotation is similar to stub, but instead of replacing the method/field/class with a stub, it will allow for a more complicated replacement by passing an asm context and
 running the function in order to produce the replacement at splitting time.
 
