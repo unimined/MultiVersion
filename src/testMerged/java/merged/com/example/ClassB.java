@@ -4,7 +4,7 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.Inheritance;
 import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedClass;
 import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember;
 
-@MergedClass(versions = { "a", "b" }, inheritance = { @Inheritance(versions = { "b" }, superClass = ClassA.class) })
+@MergedClass(versions = { "a", "b" }, inheritance = { @Inheritance(versions = { "b" }, superClass = "merged/com/example/ClassA") })
 public class ClassB {
 
     @MergedMember(versions = { "b" }, synthetic = true)

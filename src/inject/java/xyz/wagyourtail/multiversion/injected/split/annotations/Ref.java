@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 @Target({  })
 public @interface Ref {
 
-    String value();
+    String value() default "";
 
     String member() default "";
 

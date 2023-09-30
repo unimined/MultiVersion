@@ -2,7 +2,9 @@ package xyz.wagyourtail.multiversion.util
 
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
+import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.Type
 import org.objectweb.asm.tree.ClassNode
 import java.io.File
 import java.io.IOException
@@ -11,12 +13,37 @@ import java.net.URI
 import java.nio.file.*
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
+import java.util.LinkedList
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.exists
 import kotlin.io.path.inputStream
 import kotlin.io.path.outputStream
+
+
+infix fun <T> List<T>.step(count: Int): List<T> = step(0, count)
+fun <T> List<T>.step(start: Int, count: Int): List<T> = slice(start..lastIndex step count)
+
+fun <T> List<T>.step(start: Int, end: Int, count: Int): List<T> = slice(start until end step count)
+
+fun InputStream.readClass(parsing: Int = 0): ClassNode {
+    val node = ClassNode()
+    val classReader = ClassReader(this)
+    classReader.accept(node, parsing)
+    return node
+}
+
+fun String.toInternalName() =
+    if (startsWith("L") && endsWith(";")) {
+        substring(1, length - 1)
+    } else {
+        this
+    }
+
+fun String.sanatize(): String {
+    return replace(Regex("[^a-zA-Z0-9_]"), "_")
+}
 
 @Suppress("UNCHECKED_CAST")
 fun <K, V> Map<K, V?>.nonNullValues(): Map<K, V> = filterValues { it != null } as Map<K, V>
@@ -184,5 +211,3 @@ fun <K, V, E: Iterable<K>> Map<E, V>.flattenKey(): Map<K, V> {
     }
     return result
 }
-
-

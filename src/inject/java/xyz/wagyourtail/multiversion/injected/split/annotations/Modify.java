@@ -9,7 +9,7 @@ public @interface Modify {
 
     String[] versions();
 
-    Ref ref() default @Ref("");
+    Ref ref() default @Ref;
 
     boolean field() default false;
 

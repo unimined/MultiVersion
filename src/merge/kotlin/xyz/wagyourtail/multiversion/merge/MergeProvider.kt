@@ -12,18 +12,14 @@ import org.objectweb.asm.tree.FieldNode
 import org.objectweb.asm.tree.MethodNode
 import xyz.wagyourtail.multiversion.api.merge.MergeOptions
 import xyz.wagyourtail.multiversion.util.*
+import xyz.wagyourtail.multiversion.util.asm.getSuperTypes
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import kotlin.io.path.writeBytes
 
 typealias Version = String
-typealias Class = String
 typealias Access = Int
-class MergeProvider : MergeOptions {
-
-    fun String.sanatize(): String {
-        return replace(Regex("[^a-zA-Z0-9_]"), "_")
-    }
+object MergeProvider : MergeOptions {
 
     fun MethodVisitor.assertionErrorCode() {
         visitCode()
@@ -35,25 +31,35 @@ class MergeProvider : MergeOptions {
         visitMaxs(2, 1)
     }
 
-    fun merge(versions: Map<Version, Path>, output: Path) {
-        val classesByVersion = versions.mapValues { entry ->
-            entry.value.readZipContents().filter { it.endsWith(".class") }.map { it as Class }.toSet()
+    fun classNodesFromJar(jar: Path): Map<Type, ClassNode> {
+        val mut = mutableMapOf<Type, ClassNode>()
+        jar.forEachInZip { name, stream ->
+            if (!name.endsWith(".class")) return@forEachInZip
+            val classNode = stream.readClass(ClassReader.SKIP_CODE)
+            mut[Type.getObjectType(classNode.name)] = classNode
         }
-        val allClassesByVersions = classesByVersion.values.flatten().toSet().associateWith { className ->
-            classesByVersion.filter { it.value.contains(className) }.keys
+        return mut
+    }
+
+    fun resolveVersions(versionPaths: Map<Version, Path>): Pair<Map<Type, Set<Version>>, Map<Version, Map<Type, ClassNode>>> {
+        val allVersionsByClass = defaultedMapOf<Type, MutableSet<Version>> { mutableSetOf() }
+        val nodeMaps = mutableMapOf<Version, Map<Type, ClassNode>>()
+        for ((version, path) in versionPaths) {
+            val nodes = classNodesFromJar(path)
+            for (type in nodes.keys) {
+                allVersionsByClass[type].add(version)
+            }
+            nodeMaps[version] = nodes
         }
+        return allVersionsByClass to nodeMaps
+    }
+
+    fun merge(versionPaths: Map<Version, Path>, output: Path) {
+        val (allVersionsByClass, nodeMaps) = resolveVersions(versionPaths)
         output.openZipFileSystem(mapOf("create" to "true")).use { fs ->
-            for ((className, v) in allClassesByVersions) {
-                val nodeMap = v.associateWith { version ->
-                    versions[version]!!.readZipInputStreamFor(className) {
-                        val reader = ClassReader(it)
-                        val node = ClassNode()
-                        reader.accept(node, ClassReader.SKIP_CODE)
-                        node
-                    }
-                }
-                val merged = merge(nodeMap, allClassesByVersions.keys)
-                val entry = fs.getPath(className)
+            for ((className, versions) in allVersionsByClass) {
+                val merged = merge(nodeMaps.filter { versions.contains(it.key) }.mapValues { it.value[className]!! }, allVersionsByClass, nodeMaps)
+                val entry = fs.getPath(className.internalName + ".class")
                 entry.writeBytes(merged.toByteArray(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
         }
@@ -126,7 +132,7 @@ class MergeProvider : MergeOptions {
     }
 
     @VisibleForTesting
-    fun merge(versions: Map<Version, ClassNode>, mergingClasses: Set<Class> = setOf()): ClassNode {
+    fun merge(versions: Map<Version, ClassNode>, allVersionsByClass: Map<Type, Set<Version>>, nodeMaps: Map<Version, Map<Type, ClassNode>>): ClassNode {
         val output = ClassNode()
         // copy class metadata
         output.version = versions.values.minOf { it.version }.coerceAtLeast(52)
@@ -137,22 +143,24 @@ class MergeProvider : MergeOptions {
         if (classSigsByVersion.size == 1) {
             output.signature = classSigsByVersion.keys.first()
         }
-        val versionsBySuperClasses = versions.mapValues { it.value.superName as Class }.inverseMulti()
+        val versionsBySuperClasses = versions.mapValues { Type.getObjectType(it.value.superName) }.inverseMulti()
         if (versionsBySuperClasses.size == 1) {
-            output.superName = versionsBySuperClasses.keys.first()
-            if (mergingClasses.contains(output.superName)) {
+            output.superName = versionsBySuperClasses.keys.first().internalName
+            if (allVersionsByClass.contains(versionsBySuperClasses.keys.first())) {
                 output.superName = "merged/" + output.superName
             }
         } else {
-            output.superName = "java/lang/Object"
+            // intersect all super types
+            val commonSuperTypes = versionsBySuperClasses.flatMap { entry -> entry.value.map { getSuperTypes(entry.key.internalName, nodeMaps[it]!!) } }.reduce { acc, list -> acc.intersect(list.toSet()).toMutableList() }
+            output.superName = commonSuperTypes.firstOrNull() ?: "java/lang/Object"
             for ((superName, sVersions) in versionsBySuperClasses) {
-                if (superName == "java/lang/Object") {
+                if (superName.internalName == "java/lang/Object") {
                     continue
                 }
-                val castMethod = output.visitMethod(
+                output.visitMethod(
                     Opcodes.ACC_PUBLIC,
-                    "mv\$castTo\$" + superName.sanatize(),
-                    "()L$superName;",
+                    "mv\$castTo\$" + superName.internalName.sanatize(),
+                    "()${superName.descriptor}",
                     null,
                     null
                 ).apply {
@@ -165,41 +173,37 @@ class MergeProvider : MergeOptions {
                         }.visitEnd()
                         visit("synthetic", true)
                     }.visitEnd()
-                    visitEnd()
-                }
+                }.visitEnd()
             }
         }
-        val versionsByInterfaces = versions.mapValues { it.value.interfaces.toSet() as Set<Class> }.inverseMulti()
+        val versionsByInterfaces = versions.mapValues { it.value.interfaces.map { Type.getObjectType(it) }.toSet() }.inverseMulti()
         if (versionsByInterfaces.size == 1) {
-            output.interfaces = versionsByInterfaces.keys.first().toList()
+            output.interfaces = versionsByInterfaces.keys.first().map { it.internalName }
         } else {
-            output.interfaces = versionsByInterfaces.flattenKey().filterValues { it.size == versions.size }.keys.toList()
-            val interfaces = output.interfaces.toSet()
+            output.interfaces = versionsByInterfaces.flattenKey().filterValues { it.size == versions.size }.keys.map { it.internalName }
+            val interfaces = output.interfaces.map { Type.getObjectType(it) }.toSet()
             for ((iface, iVersions) in versionsByInterfaces.flattenKey()) {
                 if (iface in interfaces) {
                     continue
                 }
-                val castMethod = output.visitMethod(Opcodes.ACC_PUBLIC, "mv\$castTo\$" + iface.sanatize(), "()L$iface;", null, null)
-                castMethod.visitCode()
-                // throw new AssertionError();
-                castMethod.visitTypeInsn(Opcodes.NEW, "java/lang/AssertionError")
-                castMethod.visitInsn(Opcodes.DUP)
-                castMethod.visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/AssertionError", "<init>", "()V", false)
-                castMethod.visitInsn(Opcodes.ATHROW)
-                castMethod.visitMaxs(2, 1)
-                castMethod.visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {
-                    visitArray("versions").apply {
-                        for (version in iVersions) {
-                            visit(null, version)
-                        }
+                output.visitMethod(Opcodes.ACC_PUBLIC, "mv\$castTo\$" + iface.internalName.sanatize(), "()${iface.descriptor}", null, null).apply {
+                    assertionErrorCode()
+                    visitAnnotation(
+                        "Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;",
+                        false
+                    ).apply {
+                        visitArray("versions").apply {
+                            for (version in iVersions) {
+                                visit(null, version)
+                            }
+                        }.visitEnd()
+                        visit("synthetic", true)
                     }.visitEnd()
-                    visit("synthetic", true)
                 }.visitEnd()
-                castMethod.visitEnd()
             }
         }
         for (i in 0..output.interfaces.lastIndex) {
-            if (mergingClasses.contains(output.interfaces[i])) {
+            if (allVersionsByClass.contains(Type.getObjectType(output.interfaces[i]))) {
                 output.interfaces[i] = "merged/" + output.interfaces[i]
             }
         }
@@ -223,11 +227,11 @@ class MergeProvider : MergeOptions {
                     }
                 }.visitEnd()
             }
-            val versionsByInheritance = versions.mapValues { it.value.superName as Class to it.value.interfaces.toSet() as Set<Class> }.inverseMulti()
+            val versionsByInheritance = versions.mapValues { Type.getObjectType(it.value.superName) to it.value.interfaces.map { Type.getObjectType(it) }.toSet() }.inverseMulti()
             if (versionsByInheritance.size > 1) {
                 visitArray("inheritance").apply {
-                    val superName = output.superName
-                    val interfaces = output.interfaces.toSet()
+                    val superName = Type.getObjectType(output.superName)
+                    val interfaces = output.interfaces.map { Type.getObjectType(it) }.toSet()
                     for ((inheritance, iVersions) in versionsByInheritance) {
                         if (inheritance.first == superName && inheritance.second == interfaces) {
                             continue
@@ -239,7 +243,11 @@ class MergeProvider : MergeOptions {
                                 }
                             }.visitEnd()
                             if (inheritance.first != superName) {
-                                visit("superClass", Type.getObjectType(inheritance.first))
+                                if (inheritance.first in allVersionsByClass) {
+                                    visit("superClass", "merged/" + inheritance.first.internalName)
+                                } else {
+                                    visit("superClass", inheritance.first.internalName)
+                                }
                             }
                             if (inheritance.second != interfaces) {
                                 visitArray("interfaces").apply {
@@ -247,7 +255,11 @@ class MergeProvider : MergeOptions {
                                         if (interfaceName in interfaces) {
                                             continue
                                         }
-                                        visit(null, Type.getObjectType(interfaceName))
+                                        if (interfaceName in allVersionsByClass) {
+                                            visit(null, "merged/" + interfaceName.internalName)
+                                        } else {
+                                            visit(null, interfaceName.internalName)
+                                        }
                                     }
                                 }.visitEnd()
                             }
@@ -376,7 +388,7 @@ class MergeProvider : MergeOptions {
             field.visitEnd()
         }
         val remapped = ClassNode()
-        val remapper = ClassRemapper(remapped, SimpleRemapper(mergingClasses.associateWith { "merged/$it" }))
+        val remapper = ClassRemapper(remapped, SimpleRemapper(allVersionsByClass.keys.map { it.internalName }.associateWith { "merged/$it" }))
         output.accept(remapper)
         return remapped
     }

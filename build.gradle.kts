@@ -150,8 +150,18 @@ val testSplitJar by tasks.registering(Jar::class) {
     archiveFileName.set("test-split.jar")
 }
 
+val testSplittedAJar by tasks.registering(Jar::class) {
+    from(testSplittedA.get().output)
+    archiveFileName.set("test-splitted-a.jar")
+}
+
+val testSplittedBJar by tasks.registering(Jar::class) {
+    from(testSplittedB.get().output)
+    archiveFileName.set("test-splitted-b.jar")
+}
+
 tasks.test {
-    dependsOn(testMergeAJar, testMergeBJar, testMergedJar, testSplitJar)
+    dependsOn(testMergeAJar, testMergeBJar, testMergedJar, testSplitJar, testSplittedAJar, testSplittedBJar)
     useJUnitPlatform()
 }
 

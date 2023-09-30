@@ -10,8 +10,8 @@ public @interface Inheritance {
 
     String[] versions();
 
-    Class<?> superClass() default Void.class;
+    String superClass() default "";
 
-    Class<?>[] interfaces() default {};
+    String[] interfaces() default {};
 
 }
