@@ -77,8 +77,8 @@ open class MultiversionRootExtensionImpl(val project: Project) : MultiversionRoo
         }
 
         project.tasks.register("syncSubprojects") {
-            it.group = "multiversion-internal"
-            it.description = "Syncs subprojects with root project"
+            it.group = "multiversion"
+            it.description = "Syncs subprojects with root project, by building their version specific jars"
             subprojects.forEach { sub ->
                 sub.logger.lifecycle("[Multiversion] Syncing subproject ${sub.path}")
                 it.dependsOn(sub.tasks.getByName("splitJarTo_${sub.multiversion.version}"))
