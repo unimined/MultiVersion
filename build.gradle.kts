@@ -8,7 +8,8 @@ plugins {
 }
 
 group = project.properties["maven_group"] as String
-version = project.properties["version"] as String
+version = if (project.hasProperty("version_snapshot")) project.properties["version"] as String + "-SNAPSHOT" else project.properties["version"] as String
+
 
 base {
     archivesName.set(project.properties["archives_base_name"] as String)
