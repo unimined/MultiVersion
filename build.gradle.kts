@@ -161,6 +161,21 @@ val testSplittedBJar by tasks.registering(Jar::class) {
     archiveFileName.set("test-splitted-b.jar")
 }
 
+val sourcesJar by tasks.registering(Jar::class) {
+    from(
+        sourceSets["api"].allSource,
+        sourceSets["main"].allSource,
+        sourceSets["inject"].allSource,
+        sourceSets["merge"].allSource,
+        sourceSets["split"].allSource
+    )
+    archiveClassifier.set("sources")
+}
+
+tasks.build {
+    dependsOn(sourcesJar)
+}
+
 tasks.test {
     dependsOn(testMergeAJar, testMergeBJar, testMergedJar, testSplitJar, testSplittedAJar, testSplittedBJar)
     useJUnitPlatform()
@@ -205,6 +220,9 @@ publishing {
             artifact(tasks.jar.get())
             artifact(injectJar.get()) {
                 classifier = "inject"
+            }
+            artifact(sourcesJar.get()) {
+                classifier = "sources"
             }
         }
     }

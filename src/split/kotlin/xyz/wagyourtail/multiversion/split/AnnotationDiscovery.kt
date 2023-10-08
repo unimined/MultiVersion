@@ -6,9 +6,7 @@ import org.objectweb.asm.tree.ClassNode
 import org.objectweb.asm.tree.MethodNode
 import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedClass
 import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember
-import xyz.wagyourtail.multiversion.injected.split.annotations.Modify
-import xyz.wagyourtail.multiversion.injected.split.annotations.Replace
-import xyz.wagyourtail.multiversion.injected.split.annotations.Stub
+import xyz.wagyourtail.multiversion.injected.split.annotations.*
 import xyz.wagyourtail.multiversion.util.*
 import xyz.wagyourtail.multiversion.util.asm.FieldMethods
 import xyz.wagyourtail.multiversion.util.asm.FullyQualifiedMember
@@ -29,9 +27,16 @@ class AnnotationDiscovery(val input: Path, val mergedClasspath: Set<Path>) {
 
     val replaces = defaultedMapOf<FullyQualifiedMember, MutableMap<Version, Pair<FullyQualifiedMember, Replace>>> { mutableMapOf() }
 
-    val modifyParams = listOf<Class<*>>(MethodNode::class.java, Int::class.java, Version::class.java, ClassNode::class.java)
     val modifys = defaultedMapOf<FullyQualifiedMember, MutableMap<Version, Pair<Method, Modify>>> { mutableMapOf() }
     val revModifys = mutableSetOf<FullyQualifiedMember>()
+
+    val revClassRemoves = defaultedMapOf<Type, MutableSet<Version>> { mutableSetOf() }
+    val revMethodRemoves = defaultedMapOf<FullyQualifiedMember, MutableSet<Version>> { mutableSetOf() }
+    val revFieldRemoves = defaultedMapOf<FullyQualifiedMember, MutableSet<Version>> { mutableSetOf() }
+
+    val revClassVersioned = defaultedMapOf<Type, MutableSet<Version>> { mutableSetOf() }
+    val revMethodVersioned = defaultedMapOf<FullyQualifiedMember, MutableSet<Version>> { mutableSetOf() }
+    val revFieldVersioned = defaultedMapOf<FullyQualifiedMember, MutableSet<Version>> { mutableSetOf() }
 
     val mergedData = mutableMapOf<Type, Triple<Type, MergedClass, MutableMap<MemberAndType, MergedMember>>>()
 
@@ -65,6 +70,17 @@ class AnnotationDiscovery(val input: Path, val mergedClasspath: Set<Path>) {
                     classStubs[Type.getObjectType(stub.ref.value.toInternalName())].putAll(stub.versions.associateWith { (Type.getObjectType(node.name) to stub) })
                     revClassStubs[Type.getObjectType(node.name)] += stub.versions.toSet()
                 }
+            }
+            val classRemoveAnnotation = node.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Remove::class.java) }?.let { NodeLoader.fromNode<Remove>(it) }
+            if (classRemoveAnnotation != null) {
+                revClassRemoves[Type.getObjectType(node.name)] += classRemoveAnnotation.versions.toSet()
+            }
+            val classVersionedAnnotation = node.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Versioned::class.java) }?.let { NodeLoader.fromNode<Versioned>(it) }
+            if (classVersionedAnnotation != null) {
+                revClassVersioned[Type.getObjectType(node.name)] += classVersionedAnnotation.versions.toSet()
+            }
+            if (classRemoveAnnotation != null && classVersionedAnnotation != null) {
+                throw IllegalArgumentException("class ${node.name} cannot be both versioned and removed")
             }
             for (mNode in node.methods) {
                 val methodStubAnnotations = mNode.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Stub::class.java) }?.let { listOf(
@@ -170,13 +186,24 @@ class AnnotationDiscovery(val input: Path, val mergedClasspath: Set<Path>) {
                         // ensure modify params startWith method parameters
                         val mParams = method.parameterTypes
                         for (i in mParams.indices) {
-                            if (modifyParams[i] != mParams[i]) {
-                                throw IllegalArgumentException("modify ${node.name}.${mNode.name} must have matching parameters. expected ${modifyParams[i]} actual ${mParams[i]}")
+                            if (Modify.PARAMS[i] != mParams[i]) {
+                                throw IllegalArgumentException("modify ${node.name}.${mNode.name} must have matching parameters. expected ${Modify.PARAMS[i]} actual ${mParams[i]}")
                             }
                         }
                         modifys[FullyQualifiedMember(targetOwner, targetName, targetDesc, false)].putAll(modify.versions.associateWith { method to modify })
                         revModifys += FullyQualifiedMember(Type.getObjectType(node.name), mNode.name, Type.getMethodType(mNode.desc), true)
                     }
+                }
+                val methodRemoveAnnotation = mNode.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Remove::class.java) }?.let { NodeLoader.fromNode<Remove>(it) }
+                if (methodRemoveAnnotation != null) {
+                    revMethodRemoves[FullyQualifiedMember(Type.getObjectType(node.name), mNode.name, Type.getMethodType(mNode.desc), true)] += methodRemoveAnnotation.versions.toSet()
+                }
+                val methodVersionedAnnotation = mNode.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Versioned::class.java) }?.let { NodeLoader.fromNode<Versioned>(it) }
+                if (methodVersionedAnnotation != null) {
+                    revMethodVersioned[FullyQualifiedMember(Type.getObjectType(node.name), mNode.name, Type.getMethodType(mNode.desc), true)] += methodVersionedAnnotation.versions.toSet()
+                }
+                if (methodRemoveAnnotation != null && methodVersionedAnnotation != null) {
+                    throw IllegalArgumentException("method ${node.name}.${mNode.name} cannot be both versioned and removed")
                 }
             }
 
@@ -194,6 +221,17 @@ class AnnotationDiscovery(val input: Path, val mergedClasspath: Set<Path>) {
                         fieldStubs[FullyQualifiedMember(targetOwner, targetName, targetDesc, true)].putAll(stub.versions.associateWith { FieldMethods(field, field) to stub })
                         revFieldStubs[field] += stub.versions.toSet()
                     }
+                }
+                val fieldRemoveAnnotation = fNode.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Remove::class.java) }?.let { NodeLoader.fromNode<Remove>(it) }
+                if (fieldRemoveAnnotation != null) {
+                    revFieldRemoves[FullyQualifiedMember(Type.getObjectType(node.name), fNode.name, Type.getType(fNode.desc), true)] += fieldRemoveAnnotation.versions.toSet()
+                }
+                val fieldVersionedAnnotation = fNode.invisibleAnnotations?.firstOrNull { Type.getType(it.desc) == Type.getType(Versioned::class.java) }?.let { NodeLoader.fromNode<Versioned>(it) }
+                if (fieldVersionedAnnotation != null) {
+                    revFieldVersioned[FullyQualifiedMember(Type.getObjectType(node.name), fNode.name, Type.getType(fNode.desc), true)] += fieldVersionedAnnotation.versions.toSet()
+                }
+                if (fieldRemoveAnnotation != null && fieldVersionedAnnotation != null) {
+                    throw IllegalArgumentException("field ${node.name}.${fNode.name} cannot be both versioned and removed")
                 }
             }
         }

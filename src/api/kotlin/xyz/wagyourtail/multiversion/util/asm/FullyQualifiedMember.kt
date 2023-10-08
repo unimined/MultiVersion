@@ -6,4 +6,8 @@ data class FullyQualifiedMember(val owner: Type, val name: String, val type: Typ
 
     val memberAndType by lazy { MemberAndType(name, type) }
 
+    override fun toString(): String {
+        return "${owner.internalName}.$name ${type.descriptor}"
+    }
+
 }

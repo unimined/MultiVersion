@@ -157,12 +157,13 @@ object MergeProvider : MergeOptions {
         val classAccess = accessByVersion(versions.mapValues { it.value.access }, false)
         output.access = classAccess.first
         output.name = "merged/" + versions.values.first().name
-        val classSigsByVersion = versions.mapValues { it.value.signature }.inverseMulti()
-        if (classSigsByVersion.size == 1) {
-            output.signature = classSigsByVersion.keys.first()
-        } else {
-            output.signature = null
-        }
+        // TODO: fix signatures, removed for now because removing class generics can invalidate method/fields and that's used when compiling
+//        val classSigsByVersion = versions.mapValues { it.value.signature }.inverseMulti()
+//        if (classSigsByVersion.size == 1) {
+//            output.signature = classSigsByVersion.keys.first()
+//        } else {
+//            output.signature = null
+//        }
         // add inner classes
         val innerClasses = versions.flatMap { entry -> entry.value.innerClasses.map { it.name } }
         for (inner in innerClasses) {
@@ -329,18 +330,19 @@ object MergeProvider : MergeOptions {
                 member.name
             }
             val memberAccess = accessByVersion(versionsByMethod[member]!!.mapValues { it.value.access }, true)
-            val memberSigsByVersion = versionsByMethod[member]!!.mapValues { it.value.signature }.inverseMulti()
-            val memberSig = if (memberSigsByVersion.size == 1) {
-                memberSigsByVersion.keys.first()
-            } else {
-                null
-            }
+//            val memberSigsByVersion = versionsByMethod[member]!!.mapValues { it.value.signature }.inverseMulti()
+//            val memberSig = if (memberSigsByVersion.size == 1) {
+//                memberSigsByVersion.keys.first()
+//            } else {
+//                null
+//            }
 
             val method = output.visitMethod(
                 memberAccess.first,
                 name,
                 member.type.descriptor,
-                memberSig,
+                null,
+//                memberSig,
                 null
             )
             if (memberAccess.first and Opcodes.ACC_ABSTRACT == 0) {
@@ -380,17 +382,18 @@ object MergeProvider : MergeOptions {
                 member.name
             }
             val memberAccess = accessByVersion(versionsByField[member]!!.mapValues { it.value.access }, false)
-            val memberSigsByVersion = versionsByField[member]!!.mapValues { it.value.signature }.inverseMulti()
-            val memberSig = if (memberSigsByVersion.size == 1) {
-                memberSigsByVersion.keys.first()
-            } else {
-                null
-            }
+//            val memberSigsByVersion = versionsByField[member]!!.mapValues { it.value.signature }.inverseMulti()
+//            val memberSig = if (memberSigsByVersion.size == 1) {
+//                memberSigsByVersion.keys.first()
+//            } else {
+//                null
+//            }
             val field = output.visitField(
                 memberAccess.first,
                 name,
                 member.type.descriptor,
-                memberSig,
+                null,
+//                memberSig,
                 null
             )
             field.visitAnnotation("Lxyz/wagyourtail/multiversion/injected/merge/annotations/MergedMember;", false).apply {

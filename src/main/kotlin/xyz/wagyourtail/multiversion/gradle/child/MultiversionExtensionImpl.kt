@@ -3,6 +3,7 @@ package xyz.wagyourtail.multiversion.gradle.child
 import org.gradle.api.DefaultTask
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
+import org.gradle.api.plugins.BasePluginExtension
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.jvm.tasks.Jar
 import xyz.wagyourtail.multiversion.api.gradle.child.MultiversionExtension
@@ -53,7 +54,9 @@ open class MultiversionExtensionImpl(val project: Project) : MultiversionExtensi
         val split = project.tasks.register("splitJarTo_$version", Jar::class.java) {
             it.group = "multiversion-internal"
             it.description = "Splits the build jar into a version specific jar"
-            it.archiveClassifier.set(version)
+            it.archiveBaseName.set(project.parent!!.extensions.getByType(BasePluginExtension::class.java).archivesName.get())
+            it.archiveVersion.set(version)
+            it.archiveClassifier.set("split")
             it.destinationDirectory.set(project.buildDir.resolve("tmp").resolve("splitJarTo_$version"))
 
             it.dependsOn(this.project.parent!!.tasks.named("jar"))
@@ -62,6 +65,7 @@ open class MultiversionExtensionImpl(val project: Project) : MultiversionExtensi
                 project.logger.lifecycle("[Multiversion/${project.path}] Splitting build jar for $version")
                 val inputFile = project.parent!!.tasks.named("jar", Jar::class.java).get().archiveFile.get().asFile.toPath()
                 val tempOut = project.buildDir.toPath().resolve("tmp").resolve("splitJarTo_$version").resolve("$version.jar")
+//                val output = it.outputs.files.singleFile.toPath()
                 SplitProvider.split(inputFile, project.parent!!.sourceSets.main.compileClasspath.map { it.toPath() }.toSet(), version, tempOut)
                 (it as Jar).from(project.zipTree(tempOut.toFile()))
             }

@@ -12,4 +12,8 @@ data class FieldMethods(val setter: FullyQualifiedMember?, val getter: FullyQual
         return FieldMethods(setter, getter)
     }
 
+    override fun toString(): String {
+        return super.toString()
+    }
+
 }

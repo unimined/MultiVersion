@@ -11,8 +11,9 @@ import java.lang.invoke.MethodHandles
 import java.lang.invoke.MethodType
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.util.*
 
-object NodeLoader : ClassLoader() {
+object NodeLoader : ClassLoader(NodeLoader::class.java.classLoader) {
 
     val classVersion by lazy {
         val version = System.getProperty("java.class.version")
@@ -66,36 +67,67 @@ object NodeLoader : ClassLoader() {
         } as T
     }
 
+    val classLookup = mutableMapOf<String, Class<*>>()
+
     fun fromNode(owner: String, mNode: MethodNode): Method {
         if (mNode.access and Opcodes.ACC_STATIC == 0) throw IllegalArgumentException("node must be static")
         val cname = "xyz/wagyourtail/multiversion/util/NodeLoader\$${owner.sanatize()}\$${mNode.name}"
         val methodType = Type.getMethodType(mNode.desc)
         val parameterTypes = methodType.argumentTypes
         val returnType = methodType.returnType
-        val clazz = findLoadedClass(cname) ?: ClassNode().let { node ->
-            node.name = cname
-            node.superName = "java/lang/Object"
-            node.version = classVersion
-            node.access = Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL
-            node.methods.add(MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
-                visitCode()
-                visitVarInsn(Opcodes.ALOAD, 0)
-                visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
-                visitInsn(Opcodes.RETURN)
-                visitMaxs(0, 0)
-                visitEnd()
-            })
-            node.methods.add(MethodNode(Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC, mNode.name, mNode.desc, null, null).apply {
-                instructions = mNode.instructions
-                visitMaxs(0, 0)
-                visitEnd()
-            })
-            val writer = ClassWriter(ClassWriter.COMPUTE_MAXS or ClassWriter.COMPUTE_FRAMES)
-            node.accept(writer)
-            val arr = writer.toByteArray()
-            defineClass(node.name.replace("/", "."), arr, 0, arr.size)
+        val clazz = synchronized(getClassLoadingLock(cname)) {
+            classLookup.getOrPut(cname) {
+                val node = ClassNode()
+                node.name = cname
+                node.superName = "java/lang/Object"
+                node.version = classVersion
+                node.access = Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL
+                node.methods.add(MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null).apply {
+                    visitCode()
+                    visitVarInsn(Opcodes.ALOAD, 0)
+                    visitMethodInsn(Opcodes.INVOKESPECIAL, "java/lang/Object", "<init>", "()V", false)
+                    visitInsn(Opcodes.RETURN)
+                    visitMaxs(0, 0)
+                    visitEnd()
+                })
+                node.methods.add(
+                    MethodNode(
+                        Opcodes.ACC_PUBLIC or Opcodes.ACC_STATIC,
+                        mNode.name,
+                        mNode.desc,
+                        null,
+                        null
+                    ).apply {
+                        instructions = mNode.instructions
+                        visitMaxs(0, 0)
+                        visitEnd()
+                    })
+                val writer = ClassWriter(ClassWriter.COMPUTE_MAXS or ClassWriter.COMPUTE_FRAMES)
+                node.accept(writer)
+                val arr = writer.toByteArray()
+                val c = defineClass(node.name.replace("/", "."), arr, 0, arr.size)
+                resolveClass(c)
+                c
+            }
         }
-        val paramClasses = parameterTypes.map { Class.forName(it.className) }.toTypedArray()
+        val paramClasses = parameterTypes.map {
+            if (it.sort == Type.OBJECT) {
+                Class.forName(it.className)
+            } else {
+                // is primitive
+                when (it.sort) {
+                    Type.BOOLEAN -> Boolean::class.javaPrimitiveType
+                    Type.BYTE -> Byte::class.javaPrimitiveType
+                    Type.CHAR -> Char::class.javaPrimitiveType
+                    Type.DOUBLE -> Double::class.javaPrimitiveType
+                    Type.FLOAT -> Float::class.javaPrimitiveType
+                    Type.INT -> Int::class.javaPrimitiveType
+                    Type.LONG -> Long::class.javaPrimitiveType
+                    Type.SHORT -> Short::class.javaPrimitiveType
+                    else -> throw IllegalArgumentException("unknown primitive type ${it.sort}")
+                }
+            }
+        }.toTypedArray()
         return clazz.getDeclaredMethod(mNode.name, *paramClasses)
     }
 

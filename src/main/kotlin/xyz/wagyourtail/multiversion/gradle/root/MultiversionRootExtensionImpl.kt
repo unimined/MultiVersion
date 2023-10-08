@@ -87,7 +87,6 @@ open class MultiversionRootExtensionImpl(val project: Project) : MultiversionRoo
 
         if (dependencies.isEmpty() || dependencies.all { it.value.isEmpty() }) {
             project.logger.lifecycle("[Multiversion/${project.path}] No mergable dependencies found")
-            return
         }
 
         val merged = defaultedMapOf<ConfigName, DefaultMap<MergedName, MutableSet<Pair<Version, ResolvedArtifact>>>> {

@@ -38,9 +38,9 @@ object SplitProvider : SplitOptions {
         // stage 2: apply changes to classes, (plus remove/versioned)
         val transformed = strip(discovery, target)
         // stage 3: run over file and see if any bad version accesses remain
-        // write to temp file first
-        val temp = output.resolveSibling("${output.nameWithoutExtension}.strip.jar")
-        write(transformed, discovery, temp, target)
+//        // write to temp file first
+//        val temp = output.resolveSibling("${output.nameWithoutExtension}.strip.jar")
+//        write(transformed, discovery, temp, target)
         SplitVerifier.verify(discovery, transformed, target)
         // stage 3: remap to use non-merged classes
         val remapped = remap(discovery, transformed)
