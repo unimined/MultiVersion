@@ -2,11 +2,14 @@ package xyz.wagyourtail.multiversion.gradle
 
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import xyz.wagyourtail.multiversion.gradle.child.MultiversionExtensionImpl
 import xyz.wagyourtail.multiversion.gradle.root.MultiversionRootExtensionImpl
 
 class MultiversionRootPlugin : Plugin<Project> {
 
-    val pluginVersion: String = MultiversionRootPlugin::class.java.`package`.implementationVersion ?: "unknown"
+    companion object {
+        val pluginVersion: String = MultiversionRootPlugin::class.java.`package`.implementationVersion ?: "unknown"
+    }
 
     override fun apply(target: Project) {
         target.logger.lifecycle("[Multiversion] Root: ${target.path}")

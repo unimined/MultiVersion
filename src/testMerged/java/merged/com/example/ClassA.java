@@ -7,10 +7,6 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember;
 @MergedClass(versions = { "a", "b" })
 public class ClassA {
 
-    public ClassA(ClassA ca) {
-        throw new AssertionError();
-    }
-
     @MergedMember(versions = { "a" })
     public String fieldA;
 

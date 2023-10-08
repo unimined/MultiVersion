@@ -8,6 +8,9 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember;
 public class ClassC extends ClassB {
 
     @MergedMember(versions = { "a" })
+    private String fieldA;
+
+    @MergedMember(versions = { "a" })
     public ClassC(String arg0) {
         throw new AssertionError();
     }

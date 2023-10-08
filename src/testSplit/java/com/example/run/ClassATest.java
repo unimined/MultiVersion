@@ -1,12 +1,9 @@
 package com.example.run;
 
 import merged.com.example.ClassA;
-import xyz.wagyourtail.multiversion.injected.split.annotations.Ref;
-import xyz.wagyourtail.multiversion.injected.split.annotations.Remove;
-import xyz.wagyourtail.multiversion.injected.split.annotations.Replace;
-import xyz.wagyourtail.multiversion.injected.split.annotations.Stub;
+import xyz.wagyourtail.multiversion.injected.split.annotations.*;
 
-public class ClassATest extends @Remove(versions = "a") ClassA {
+public class ClassATest extends @Remove(versions = "a") ClassA implements Runnable {
 
     @Replace(versions = {"a"}, ref = @Ref(member = "fieldA"), field = true)
     @Replace(versions = {"b"}, ref = @Ref(member = "methodB"))
@@ -32,4 +29,8 @@ public class ClassATest extends @Remove(versions = "a") ClassA {
         System.out.println(a.methodB());
     }
 
+    @Override
+    public void run() {
+
+    }
 }

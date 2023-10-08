@@ -11,6 +11,7 @@ import xyz.wagyourtail.multiversion.test.assertEqual
 import xyz.wagyourtail.multiversion.test.simplifiedVisitor
 import xyz.wagyourtail.multiversion.test.writeClass
 import xyz.wagyourtail.multiversion.util.forEachInZip
+import xyz.wagyourtail.multiversion.util.inverseFlatMulti
 import xyz.wagyourtail.multiversion.util.readClass
 import xyz.wagyourtail.multiversion.util.readZipInputStreamFor
 import java.io.ByteArrayOutputStream
@@ -39,8 +40,9 @@ class MergeProviderTest {
     fun test(name: String) = test(Type.getObjectType(name))
 
     fun test(name: Type) {
-        val (allVersionsByClass, nodeMaps) = resolved
-        val out = MergeProvider.merge(allVersionsByClass[name]!!.associateWith { nodeMaps[it]!![name]!! }, allVersionsByClass, nodeMaps)
+        val nodeMaps = resolved
+        val allVersionsByClass = nodeMaps.mapValues { it.value.keys }.inverseFlatMulti()
+        val out = MergeProvider.merge(allVersionsByClass[name]!!.associateWith { nodeMaps[it]!![name]!! }, allVersionsByClass, nodeMaps, setOf())
         assertEqual(simplifiedVisitor { mergedClasses[Type.getObjectType("merged/" + name.internalName)]!!.accept(it) }, simplifiedVisitor { out.accept(it) })
 //        writeClass({ out.accept(it) }, Paths.get("./build/tmp/test/merged/$name.class"))
     }

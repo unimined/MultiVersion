@@ -15,9 +15,13 @@ import xyz.wagyourtail.multiversion.util.*
 import xyz.wagyourtail.multiversion.util.asm.getSuperTypes
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.exists
 import kotlin.io.path.writeBytes
 
 typealias Version = String
+typealias MergeName = String
 typealias Access = Int
 object MergeProvider : MergeOptions {
 
@@ -41,25 +45,39 @@ object MergeProvider : MergeOptions {
         return mut
     }
 
-    fun resolveVersions(versionPaths: Map<Version, Path>): Pair<Map<Type, Set<Version>>, Map<Version, Map<Type, ClassNode>>> {
-        val allVersionsByClass = defaultedMapOf<Type, MutableSet<Version>> { mutableSetOf() }
+    fun resolveVersions(versionPaths: Map<Version, Path>): Map<Version, Map<Type, ClassNode>> {
         val nodeMaps = mutableMapOf<Version, Map<Type, ClassNode>>()
         for ((version, path) in versionPaths) {
             val nodes = classNodesFromJar(path)
-            for (type in nodes.keys) {
-                allVersionsByClass[type].add(version)
-            }
             nodeMaps[version] = nodes
         }
-        return allVersionsByClass to nodeMaps
+        return nodeMaps
     }
 
-    fun merge(versionPaths: Map<Version, Path>, output: Path) {
-        val (allVersionsByClass, nodeMaps) = resolveVersions(versionPaths)
+    fun mergeAll(mergable: Map<MergeName, Map<Version, Path>>, outputs: Map<MergeName, Path>) {
+        if (outputs.values.all { it.exists() }) {
+            return
+        }
+        val allNodeMaps = mutableMapOf<MergeName, Map<Version, Map<Type, ClassNode>>>()
+        for ((name, versions) in mergable) {
+            allNodeMaps[name] = resolveVersions(versions)
+        }
+        val allClasses = allNodeMaps.values.flatMap { it.values.flatMap { it.keys } }.toSet()
+        for ((name, nodeMaps) in allNodeMaps) {
+            if (!outputs[name]!!.exists()) {
+                merge(nodeMaps, allClasses, outputs[name]!!)
+            }
+        }
+    }
+
+    fun merge(nodeMaps: Map<Version, Map<Type, ClassNode>>, allClasses: Set<Type>, output: Path) {
+        val allVersionsByClass = nodeMaps.mapValues { it.value.keys }.inverseFlatMulti()
+        output.deleteIfExists()
         output.openZipFileSystem(mapOf("create" to "true")).use { fs ->
             for ((className, versions) in allVersionsByClass) {
-                val merged = merge(nodeMaps.filter { versions.contains(it.key) }.mapValues { it.value[className]!! }, allVersionsByClass, nodeMaps)
-                val entry = fs.getPath(className.internalName + ".class")
+                val merged = merge(nodeMaps.filter { versions.contains(it.key) }.mapValues { it.value[className]!! }, allVersionsByClass, nodeMaps, allClasses)
+                val entry = fs.getPath(merged.name + ".class")
+                entry.parent.createDirectories()
                 entry.writeBytes(merged.toByteArray(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
             }
         }
@@ -132,17 +150,31 @@ object MergeProvider : MergeOptions {
     }
 
     @VisibleForTesting
-    fun merge(versions: Map<Version, ClassNode>, allVersionsByClass: Map<Type, Set<Version>>, nodeMaps: Map<Version, Map<Type, ClassNode>>): ClassNode {
+    fun merge(versions: Map<Version, ClassNode>, allVersionsByClass: Map<Type, Set<Version>>, nodeMaps: Map<Version, Map<Type, ClassNode>>, otherMerging: Set<Type>): ClassNode {
         val output = ClassNode()
         // copy class metadata
         output.version = versions.values.minOf { it.version }.coerceAtLeast(52)
         val classAccess = accessByVersion(versions.mapValues { it.value.access }, false)
         output.access = classAccess.first
         output.name = "merged/" + versions.values.first().name
-        val classSigsByVersion = versions.mapValues { it.value.signature }.filterValues { it != null }.inverseMulti()
+        val classSigsByVersion = versions.mapValues { it.value.signature }.inverseMulti()
         if (classSigsByVersion.size == 1) {
             output.signature = classSigsByVersion.keys.first()
+        } else {
+            output.signature = null
         }
+        // add inner classes
+        val innerClasses = versions.flatMap { entry -> entry.value.innerClasses.map { it.name } }
+        for (inner in innerClasses) {
+            val innerClassNodes = versions.mapValues { it.value.innerClasses.firstOrNull { it.name == inner } }.filterValues { it != null }
+            // widest access level
+            val access = innerClassNodes.mapValues { it.value!!.access as Access }
+            val innerAccess = accessByVersion(access, false).first
+            // just grab one for the def
+            val innerClass = innerClassNodes.values.first()!!
+            output.visitInnerClass(inner, innerClass.outerName, innerClass.innerName, innerAccess)
+        }
+
         val versionsBySuperClasses = versions.mapValues { Type.getObjectType(it.value.superName) }.inverseMulti()
         if (versionsBySuperClasses.size == 1) {
             output.superName = versionsBySuperClasses.keys.first().internalName
@@ -297,9 +329,9 @@ object MergeProvider : MergeOptions {
                 member.name
             }
             val memberAccess = accessByVersion(versionsByMethod[member]!!.mapValues { it.value.access }, true)
-            val memberSigsByVersion = versionsByMethod[member]!!.mapValues { it.value.signature }.filterValues { it != null }.inverseMulti()
+            val memberSigsByVersion = versionsByMethod[member]!!.mapValues { it.value.signature }.inverseMulti()
             val memberSig = if (memberSigsByVersion.size == 1) {
-                classSigsByVersion.keys.first()
+                memberSigsByVersion.keys.first()
             } else {
                 null
             }
@@ -348,9 +380,9 @@ object MergeProvider : MergeOptions {
                 member.name
             }
             val memberAccess = accessByVersion(versionsByField[member]!!.mapValues { it.value.access }, false)
-            val memberSigsByVersion = versionsByField[member]!!.mapValues { it.value.signature }.filterValues { it != null }.inverseMulti()
+            val memberSigsByVersion = versionsByField[member]!!.mapValues { it.value.signature }.inverseMulti()
             val memberSig = if (memberSigsByVersion.size == 1) {
-                classSigsByVersion.keys.first()
+                memberSigsByVersion.keys.first()
             } else {
                 null
             }
@@ -388,7 +420,7 @@ object MergeProvider : MergeOptions {
             field.visitEnd()
         }
         val remapped = ClassNode()
-        val remapper = ClassRemapper(remapped, SimpleRemapper(allVersionsByClass.keys.map { it.internalName }.associateWith { "merged/$it" }))
+        val remapper = ClassRemapper(remapped, SimpleRemapper(allVersionsByClass.keys.map { it.internalName }.associateWith { "merged/$it" } + otherMerging.map { it.internalName }.associateWith { "merged/$it" }))
         output.accept(remapper)
         return remapped
     }

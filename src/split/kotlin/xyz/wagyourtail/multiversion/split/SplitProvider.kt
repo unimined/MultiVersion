@@ -15,6 +15,7 @@ import xyz.wagyourtail.multiversion.injected.merge.annotations.MergedMember
 import xyz.wagyourtail.multiversion.injected.split.annotations.*
 import xyz.wagyourtail.multiversion.util.NodeLoader
 import xyz.wagyourtail.multiversion.util.asm.*
+import xyz.wagyourtail.multiversion.util.forEachInZip
 import xyz.wagyourtail.multiversion.util.inverseMulti
 import xyz.wagyourtail.multiversion.util.openZipFileSystem
 import java.nio.file.Path
@@ -39,12 +40,12 @@ object SplitProvider : SplitOptions {
         // stage 3: run over file and see if any bad version accesses remain
         // write to temp file first
         val temp = output.resolveSibling("${output.nameWithoutExtension}.strip.jar")
-        write(transformed, discovery.mergedData, temp, target)
+        write(transformed, discovery, temp, target)
         SplitVerifier.verify(discovery, transformed, target)
         // stage 3: remap to use non-merged classes
         val remapped = remap(discovery, transformed)
         // stage 4: write classes to output
-        write(remapped, discovery.mergedData, output, target)
+        write(remapped, discovery, output, target)
     }
 
     fun strip(discovery: AnnotationDiscovery, target: Version): Map<Type, ClassNode> {
@@ -65,7 +66,7 @@ object SplitProvider : SplitOptions {
         if (shouldStrip(node.invisibleAnnotations, target)) {
             return true
         }
-        val annotations = node.invisibleTypeAnnotations.map { TypeReference(it.typeRef) to it }.filter { it.first.sort == TypeReference.CLASS_EXTENDS }
+        val annotations = node.invisibleTypeAnnotations?.map { TypeReference(it.typeRef) to it }?.filter { it.first.sort == TypeReference.CLASS_EXTENDS } ?: emptyList()
         val extends = annotations.filter { it.first.superTypeIndex == -1 }.map { it.second }
         val implements = annotations.filter { it.first.superTypeIndex != -1 }.associate { it.second to node.interfaces[it.first.superTypeIndex] }.inverseMulti()
         node.invisibleTypeAnnotations = mutableListOf()
@@ -96,11 +97,12 @@ object SplitProvider : SplitOptions {
             }
             node.superName = "java/lang/Object"
         } else {
-            node.invisibleAnnotations.addAll(extends)
+            node.invisibleTypeAnnotations.addAll(extends)
         }
         // interfaces
+        val interfaces = node.interfaces.toList()
         node.interfaces = mutableListOf()
-        for (type in node.interfaces.toList()) {
+        for (type in interfaces) {
             if (!shouldStrip(implements[type], target)) {
                 node.invisibleTypeAnnotations.addAll(implements[type]?.onEach { it.typeRef = TypeReference.newSuperTypeReference(node.interfaces.size).value } ?: emptyList())
                 node.interfaces.add(type)
@@ -617,13 +619,21 @@ object SplitProvider : SplitOptions {
         return out
     }
 
-    private fun write(transformed: Map<Type, ClassNode>, mergeData: Map<Type, Triple<Type, MergedClass, MutableMap<MemberAndType, MergedMember>>>, output: Path, target: Version) {
+    private fun write(transformed: Map<Type, ClassNode>, discovery: AnnotationDiscovery, output: Path, target: Version) {
         output.deleteIfExists()
         output.openZipFileSystem(mapOf("create" to true)).use { fs ->
             for ((type, node) in transformed) {
                 fs.getPath(type.internalName + ".class").apply {
                     parent?.createDirectories()
-                    writeBytes(write(transformed, mergeData, node, target))
+                    writeBytes(write(transformed, discovery.mergedData, node, target))
+                }
+            }
+            // write resources
+            discovery.input.forEachInZip { name, stream ->
+                if (name.endsWith(".class")) return@forEachInZip
+                fs.getPath(name).apply {
+                    parent?.createDirectories()
+                    writeBytes(stream.readBytes())
                 }
             }
         }

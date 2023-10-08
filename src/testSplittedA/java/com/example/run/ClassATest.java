@@ -3,7 +3,7 @@ package com.example.run;
 import com.example.ClassA;
 import xyz.wagyourtail.multiversion.injected.split.annotations.Stub;
 
-public class ClassATest {
+public class ClassATest implements Runnable {
 
     @Stub(versions = {"a"})
     public static String methodB(ClassA a) {
@@ -16,6 +16,11 @@ public class ClassATest {
         a.methodA();
         a.methodC();
         System.out.println(methodB(a));
+    }
+
+    @Override
+    public void run() {
+
     }
 
 }

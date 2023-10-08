@@ -88,6 +88,7 @@ repositories {
 
 dependencies {
     implementation(gradleApi())
+
     implementation("org.ow2.asm:asm:$asmVersion")
     implementation("org.ow2.asm:asm-commons:$asmVersion")
     implementation("org.ow2.asm:asm-tree:$asmVersion")

@@ -1,4 +1,4 @@
-package xyz.wagyourtail.unimined.util
+package xyz.wagyourtail.multiversion.util
 
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty

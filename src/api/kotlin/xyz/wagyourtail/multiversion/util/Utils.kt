@@ -1,7 +1,11 @@
 package xyz.wagyourtail.multiversion.util
 
+import org.gradle.api.Project
 import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.Dependency
+import org.gradle.api.tasks.SourceSet
+import org.gradle.api.tasks.SourceSetContainer
+import org.gradle.api.tasks.TaskContainer
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Type
@@ -211,3 +215,9 @@ fun <K, V, E: Iterable<K>> Map<E, V>.flattenKey(): Map<K, V> {
     }
     return result
 }
+
+val Project.sourceSets
+    get() = this.extensions.getByType(SourceSetContainer::class.java)
+
+val SourceSetContainer.main: SourceSet
+    get() = this.getByName("main")
